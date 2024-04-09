@@ -1,10 +1,10 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Otus.Teaching.PromoCodeFactory.WebHost", "Otus.Teaching.PromoCodeFactory.WebHost\Otus.Teaching.PromoCodeFactory.WebHost.csproj", "{C086AC72-ADC7-432C-99D8-A8D60A0B44CA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Otus.Teaching.PromoCodeFactory.WebHost", "Otus.Teaching.PromoCodeFactory.WebHost\Otus.Teaching.PromoCodeFactory.WebHost.csproj", "{C086AC72-ADC7-432C-99D8-A8D60A0B44CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Otus.Teaching.PromoCodeFactory.DataAccess", "Otus.Teaching.PromoCodeFactory.DataAccess\Otus.Teaching.PromoCodeFactory.DataAccess.csproj", "{D7E675A3-9872-47D6-B906-797B7B866534}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Otus.Teaching.PromoCodeFactory.DataAccess", "Otus.Teaching.PromoCodeFactory.DataAccess\Otus.Teaching.PromoCodeFactory.DataAccess.csproj", "{D7E675A3-9872-47D6-B906-797B7B866534}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Otus.Teaching.PromoCodeFactory.Core", "Otus.Teaching.PromoCodeFactory.Core\Otus.Teaching.PromoCodeFactory.Core.csproj", "{FA64A24E-D404-4E7D-89A8-B87E134F697F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Otus.Teaching.PromoCodeFactory.Core", "Otus.Teaching.PromoCodeFactory.Core\Otus.Teaching.PromoCodeFactory.Core.csproj", "{FA64A24E-D404-4E7D-89A8-B87E134F697F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Otus.Teaching.PromoCodeFactory.UnitTests", "Otus.Teaching.PromoCodeFactory.UnitTests\Otus.Teaching.PromoCodeFactory.UnitTests.csproj", "{28FDE1D4-2524-4494-9791-A903FD1B90D1}"
 EndProject
