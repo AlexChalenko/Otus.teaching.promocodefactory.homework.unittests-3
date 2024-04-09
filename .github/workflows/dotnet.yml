@@ -22,9 +22,12 @@ jobs:
 
     - name: Install dependencies
       run: dotnet restore Otus.Teaching.PromoCodeFactory.sln
+      working-directory: src
 
     - name: Build
       run: dotnet build Otus.Teaching.PromoCodeFactory.sln --no-restore -c Release
+      working-directory: src
 
     - name: Test
       run: dotnet test Otus.Teaching.PromoCodeFactory.sln --no-build --verbosity normal -c Release
+      working-directory: src
