@@ -1,6 +1,8 @@
-﻿using FluentAssertions;
+﻿using AutoFixture;
+using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using Namotion.Reflection;
 using Otus.Teaching.PromoCodeFactory.Core.Abstractions.Repositories;
 using Otus.Teaching.PromoCodeFactory.Core.Domain.PromoCodeManagement;
 using Otus.Teaching.PromoCodeFactory.WebHost.Controllers;
@@ -15,55 +17,53 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 {
     public class SetPartnerPromoCodeLimitAsyncTests
     {
-        //TODO: Add Unit Tests
-
         //#1
         [Fact]
         public async Task SetPartnerPromoCodeLimitAsync_PartnerNotFound_ReturnsNotFoundResult()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
+            var autofixture = new Fixture();
+            var partnerId = autofixture.Create<Guid>();
+
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
             mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync((Partner)null);
 
             var setPartnerPromoCodeLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
-
             var controller = new PartnersController(mockPartnerRepository.Object);
 
             // Act
             var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, setPartnerPromoCodeLimitRequest);
 
             // Assert
-            result.Should().BeOfType<NotFoundResult>(); // Использование FluentAssertions
+            result.Should().BeOfType<NotFoundResult>();
         }
 
         //#2
         [Fact]
         public async Task SetPartnerPromoCodeLimitAsync_PartnerIsInactive_ReturnsBadRequestResult()
         {
-            // Arrange
-            var partnerId = Guid.NewGuid();
+            //Arrange
+            var fixture = CreateFixture();
+
+            var partnerId = fixture.Create<Guid>();
+            var inactivePartner = fixture.Build<Partner>()
+                                          .With(p => p.Id, partnerId)
+                                          .With(p => p.IsActive, false)
+                                          .Create();
+
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
+            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(inactivePartner);
 
-            var inactivePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = false,
-            };
-
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
-                                 .ReturnsAsync(inactivePartner);
-
-            var setPartnerPromoCodeLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
+            var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
 
             var controller = new PartnersController(mockPartnerRepository.Object);
 
             // Act
-            var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, setPartnerPromoCodeLimitRequest);
+            var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
 
             // Assert
-            result.Should().BeOfType<BadRequestObjectResult>(); // Используем FluentAssertions для проверки результата
+            result.Should().BeOfType<BadRequestObjectResult>();
         }
 
         //#3
@@ -71,44 +71,44 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_NewLimitSet_NumberIssuedPromoCodesResetsToZero()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                NumberIssuedPromoCodes = 10, // Исходное количество выданных промокодов
-                                             // Задайте другие необходимые свойства объекта Partner здесь
-                PartnerLimits = new List<PartnerPromoCodeLimit>
-                {
-                    new PartnerPromoCodeLimit { Id = Guid.NewGuid(), PartnerId = partnerId, Limit = 5, CreateDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) }
-                }
-            };
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                                                    .With(l => l.Limit, 50)
+                                                    .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                                                    .With(l => l.EndDate, DateTime.UtcNow.AddDays(10))
+                                                    .Without(l => l.CancelDate)
+                                                    .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                           .With(p => p.Id, partnerId)
+                                           .With(p => p.IsActive, true)
+                                           .With(p => p.NumberIssuedPromoCodes, 10)
+                                           .Without(p => p.PartnerLimits)
+                                           .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
             mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync(activePartner);
 
-            // Подразумевается, что после вызова UpdateAsync объект activePartner будет обновлён
             mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
-                                 .Callback<Partner>(p =>
-                                 {
-                                     activePartner.NumberIssuedPromoCodes = p.NumberIssuedPromoCodes;
-                                     activePartner.PartnerLimits = p.PartnerLimits;
-                                     // Обновите другие свойства при необходимости
-                                 })
-                                 .Returns(Task.CompletedTask); // Поскольку метод асинхронный, возвращаем завершенную задачу
+                                .Callback<Partner>(p => activePartner = p)
+                                .Returns(Task.CompletedTask);
 
-            var setPartnerPromoCodeLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
+            var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
 
             var controller = new PartnersController(mockPartnerRepository.Object);
 
             // Act
-            await controller.SetPartnerPromoCodeLimitAsync(partnerId, setPartnerPromoCodeLimitRequest);
+            await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
 
             // Assert
-            activePartner.NumberIssuedPromoCodes.Should().Be(0); // Используем FluentAssertions для проверки
-            activePartner.PartnerLimits.Should().HaveCount(2); // Убедитесь, что список лимитов обновлён корректно
-            activePartner.PartnerLimits.Last().Limit.Should().Be(setPartnerPromoCodeLimitRequest.Limit); // Проверяем, что новый лимит установлен корректно
+            activePartner.NumberIssuedPromoCodes.Should().Be(0);
+            activePartner.PartnerLimits.Should().HaveCount(2);
+            activePartner.PartnerLimits.Last().Limit.Should().Be(newLimitRequest.Limit);
         }
 
         //#3
@@ -116,37 +116,33 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_ExpiredLimitSet_NumberIssuedPromoCodesDoesNotReset()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var issuedPromoCodesCount = 10; // Предположим, что партнер уже выдал 10 промокодов
             var cancelledDate = DateTime.UtcNow.AddDays(-5); // Дата отмены лимита
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                NumberIssuedPromoCodes = issuedPromoCodesCount,
-                PartnerLimits = new List<PartnerPromoCodeLimit>
-                {
-                    new PartnerPromoCodeLimit
-                    {
-                        Id = Guid.NewGuid(),
-                        PartnerId = partnerId,
-                        Limit = issuedPromoCodesCount,
-                        CreateDate = DateTime.UtcNow.AddDays(-20),
-                        EndDate = cancelledDate,
-                        CancelDate = cancelledDate
-                    }
-                }
-            };
+
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                                                        .With(l => l.Limit, 50)
+                                                        .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                                                        .With(l => l.EndDate, cancelledDate)
+                                                        .With(l => l.CancelDate, cancelledDate)
+                                                        .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                           .With(p => p.Id, partnerId)
+                                           .With(p => p.IsActive, true)
+                                           .With(p => p.NumberIssuedPromoCodes, 10)
+                                           .Without(p => p.PartnerLimits)
+                                           .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
             mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync(activePartner);
 
             mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
-                                 .Callback<Partner>(p =>
-                                 {
-                                     activePartner = p;
-                                 })
+                                 .Callback<Partner>(p => activePartner = p)
                                  .Returns(Task.CompletedTask);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1); // Новый лимит с количеством и датой окончания
@@ -167,22 +163,29 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_WithExistingLimit_DisablesPreviousLimit()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var existingLimit = new PartnerPromoCodeLimit
-            {
-                Id = Guid.NewGuid(),
-                PartnerId = partnerId,
-                Limit = 5,
-                CreateDate = DateTime.UtcNow.AddDays(-10),
-                EndDate = DateTime.UtcNow.AddDays(10) // Предположим, что лимит еще активен
-            };
 
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit }
-            };
+            var numberIssuedPromoCodes = 123;
+
+            var newLimit = 56; // Новый лимит, который будет установлен
+
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                                       .With(l => l.Limit, 1000)
+                                       .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                                       .With(l => l.EndDate, DateTime.UtcNow.AddDays(10))
+                                       .Without(l => l.CancelDate)
+                                       .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                       .With(p => p.Id, partnerId)
+                                       .With(p => p.IsActive, true)
+                                       .With(p => p.NumberIssuedPromoCodes, numberIssuedPromoCodes)
+                                       .Without(p => p.PartnerLimits)
+                                       .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
             mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
@@ -192,7 +195,7 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
                                  .Callback<Partner>(p => activePartner = p)
                                  .Returns(Task.CompletedTask);
 
-            var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 30); // Новый лимит, который будет установлен
+            var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(newLimit, 30); // Новый лимит, который будет установлен
 
             var controller = new PartnersController(mockPartnerRepository.Object);
 
@@ -200,9 +203,9 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
             await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
 
             // Assert
-            activePartner.PartnerLimits.Should().ContainSingle(limit => limit.CancelDate.HasValue); // Проверяем, что у предыдущего лимита установлена дата отмены
-            activePartner.PartnerLimits.Should().ContainSingle(limit => limit.Id == existingLimit.Id && limit.CancelDate.HasValue); // Более точная проверка, что это именно предыдущий лимит был отключен
+            activePartner.PartnerLimits.ToList().First().Should().HasProperty(nameof(PartnerPromoCodeLimit.CancelDate));
             activePartner.PartnerLimits.Should().HaveCount(2); // Убедитесь, что новый лимит добавлен
+            activePartner.PartnerLimits.Last().Limit.Should().Be(newLimit); // Убедитесь, что новый лимит установлен корректно
         }
 
         //#5
@@ -210,22 +213,30 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_LimitIsZeroOrNegative_ReturnsBadRequest()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                NumberIssuedPromoCodes = 10, // Исходное количество выданных промокодов
-                                             // Задайте другие необходимые свойства объекта Partner здесь
-                PartnerLimits = new List<PartnerPromoCodeLimit>
-                {
-                    new PartnerPromoCodeLimit { Id = Guid.NewGuid(), PartnerId = partnerId, Limit = 5, CreateDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) }
-                }
-            };
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                           .With(l => l.Limit, 1000)
+                           .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                           .With(l => l.EndDate, DateTime.UtcNow.AddDays(10))
+                           .Without(l => l.CancelDate)
+                           .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                       .With(p => p.Id, partnerId)
+                                       .With(p => p.IsActive, true)
+                                       .With(p => p.NumberIssuedPromoCodes, 10)
+                                       .Without(p => p.PartnerLimits)
+                                       .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
-                                 .ReturnsAsync(activePartner);
+            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
+            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+                     .Callback<Partner>(p => activePartner = p)
+                     .Returns(Task.CompletedTask);
 
             var invalidLimitRequest = CreateSetPartnerPromoCodeLimitRequest(0, 30); // Лимит равен 0, что невалидно
 
@@ -244,25 +255,30 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_LimitIsPositive_AddsLimitSuccessfully()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                NumberIssuedPromoCodes = 10, // Исходное количество выданных промокодов
-                                             // Задайте другие необходимые свойства объекта Partner здесь
-                PartnerLimits = new List<PartnerPromoCodeLimit>
-                {
-                    new PartnerPromoCodeLimit { Id = Guid.NewGuid(), PartnerId = partnerId, Limit = 5, CreateDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) }
-                }
-            };
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                           .With(l => l.Limit, 1000)
+                           .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                           .With(l => l.EndDate, DateTime.UtcNow.AddDays(10))
+                           .Without(l => l.CancelDate)
+                           .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                       .With(p => p.Id, partnerId)
+                                       .With(p => p.IsActive, true)
+                                       .With(p => p.NumberIssuedPromoCodes, 10)
+                                       .Without(p => p.PartnerLimits)
+                                       .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
-                                 .ReturnsAsync(activePartner);
-
+            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
             mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
-                                 .Returns(Task.CompletedTask);
+                     .Callback<Partner>(p => activePartner = p)
+                     .Returns(Task.CompletedTask);
 
             var validLimitRequest = CreateSetPartnerPromoCodeLimitRequest(1, 30); // Лимит положителен
 
@@ -280,22 +296,31 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
         public async Task SetPartnerPromoCodeLimitAsync_SavesNewLimitInDatabase()
         {
             // Arrange
-            var partnerId = Guid.NewGuid();
-            var activePartner = new Partner
-            {
-                Id = partnerId,
-                IsActive = true,
-                NumberIssuedPromoCodes = 10, // Исходное количество выданных промокодов
-                                             // Задайте другие необходимые свойства объекта Partner здесь
-                PartnerLimits = new List<PartnerPromoCodeLimit>
-                {
-                    new PartnerPromoCodeLimit { Id = Guid.NewGuid(), PartnerId = partnerId, Limit = 5, CreateDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) }
-                }
-            };
+            var fixture = CreateFixture();
+            var partnerId = fixture.Create<Guid>();
+
+            var existingLimit = fixture.Build<PartnerPromoCodeLimit>()
+                           .With(l => l.Limit, 1000)
+                           .With(l => l.CreateDate, DateTime.UtcNow.AddDays(-10))
+                           .With(l => l.EndDate, DateTime.UtcNow.AddDays(10))
+                           .Without(l => l.CancelDate)
+                           .Create();
+
+            var activePartner = fixture.Build<Partner>()
+                                       .With(p => p.Id, partnerId)
+                                       .With(p => p.IsActive, true)
+                                       .With(p => p.NumberIssuedPromoCodes, 10)
+                                       .Without(p => p.PartnerLimits)
+                                       .Create();
+
+            activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
             var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
-                                 .ReturnsAsync(activePartner);
+            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
+            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+                     .Callback<Partner>(p => activePartner = p)
+                     .Returns(Task.CompletedTask);
+
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(1, 30); // Новый лимит с количеством и датой окончания
 
@@ -310,11 +335,24 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 
         private SetPartnerPromoCodeLimitRequest CreateSetPartnerPromoCodeLimitRequest(int limit, int daysToAdd)
         {
-            return new SetPartnerPromoCodeLimitRequest()
-            {
-                Limit = limit,
-                EndDate = DateTime.Now.AddDays(daysToAdd)
-            };
+            var fixture = CreateFixture();
+
+            var newLimitRequest = fixture.Build<SetPartnerPromoCodeLimitRequest>()
+                .With(l => l.Limit, limit)
+                .With(l => l.EndDate, DateTime.Now.AddDays(daysToAdd))
+                .Create();
+
+            return newLimitRequest;
         }
+
+
+        private Fixture CreateFixture()
+        {
+            var fixture = new Fixture();
+            fixture.Behaviors.OfType<ThrowingRecursionBehavior>().ToList().ForEach(b => fixture.Behaviors.Remove(b));
+            fixture.Behaviors.Add(new OmitOnRecursionBehavior());
+            return fixture;
+        }
+
     }
 }
