@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+
     runs-on: ubuntu-latest
 
     steps:
@@ -20,10 +21,10 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Install dependencies
-      run: dotnet restore
+      run: dotnet restore Otus.Teaching.PromoCodeFactory.sln
 
     - name: Build
-      run: dotnet build --no-restore -c Release
+      run: dotnet build Otus.Teaching.PromoCodeFactory.sln --no-restore -c Release
 
     - name: Test
-      run: dotnet test --no-build --verbosity normal -c Release
+      run: dotnet test Otus.Teaching.PromoCodeFactory.sln --no-build --verbosity normal -c Release
