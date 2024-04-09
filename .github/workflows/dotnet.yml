@@ -1,4 +1,4 @@
-name: .NET 8.0 CI
+name: Tests
 
 on:
   push:
