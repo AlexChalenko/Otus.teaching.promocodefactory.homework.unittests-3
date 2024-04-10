@@ -1,12 +1,15 @@
 ﻿using AutoFixture;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Namotion.Reflection;
 using Otus.Teaching.PromoCodeFactory.Core.Abstractions.Repositories;
 using Otus.Teaching.PromoCodeFactory.Core.Domain.PromoCodeManagement;
 using Otus.Teaching.PromoCodeFactory.WebHost.Controllers;
 using Otus.Teaching.PromoCodeFactory.WebHost.Models;
+using Otus.Teaching.PromoCodeFactory.WebHost.Services;
+using Otus.Teaching.PromoCodeFactory.WebHost.Tools;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +20,19 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 {
     public class SetPartnerPromoCodeLimitAsyncTests
     {
+        private readonly IServiceProvider _serviceProvider;
+        private readonly Mock<IRepository<Partner>> _mockPartnerRepository;
+
+        public SetPartnerPromoCodeLimitAsyncTests()
+        {
+            var services = new ServiceCollection();
+            _mockPartnerRepository = new Mock<IRepository<Partner>>();
+            services.AddSingleton(_mockPartnerRepository.Object);
+            services.AddPatnerService();
+
+            _serviceProvider = services.BuildServiceProvider();
+        }
+
         //#1
         [Fact]
         public async Task SetPartnerPromoCodeLimitAsync_PartnerNotFound_ReturnsNotFoundResult()
@@ -25,18 +41,20 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
             var autofixture = new Fixture();
             var partnerId = autofixture.Create<Guid>();
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync((Partner)null);
 
+            var partnerService = _serviceProvider.GetService<IPartnerService>();
+
             var setPartnerPromoCodeLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, setPartnerPromoCodeLimitRequest);
 
             // Assert
-            result.Should().BeOfType<NotFoundResult>();
+            result.Should().BeOfType<NotFoundObjectResult>();
         }
 
         //#2
@@ -52,12 +70,13 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
                                           .With(p => p.IsActive, false)
                                           .Create();
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(inactivePartner);
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(inactivePartner);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
-
-            var controller = new PartnersController(mockPartnerRepository.Object);
 
             // Act
             var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
@@ -90,17 +109,18 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync(activePartner);
 
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
                                 .Callback<Partner>(p => activePartner = p)
                                 .Returns(Task.CompletedTask);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1);
 
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
@@ -137,17 +157,18 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync(activePartner);
 
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
                                  .Callback<Partner>(p => activePartner = p)
                                  .Returns(Task.CompletedTask);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(100, 1); // Новый лимит с количеством и датой окончания
 
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
@@ -186,18 +207,17 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
                                        .Create();
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
-
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
+            
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId))
                                  .ReturnsAsync(activePartner);
-
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
-                                 .Callback<Partner>(p => activePartner = p)
-                                 .Returns(Task.CompletedTask);
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+                                             .Callback<Partner>(p => activePartner = p)
+                                             .Returns(Task.CompletedTask);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(newLimit, 30); // Новый лимит, который будет установлен
-
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
@@ -232,15 +252,16 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
                      .Callback<Partner>(p => activePartner = p)
                      .Returns(Task.CompletedTask);
 
             var invalidLimitRequest = CreateSetPartnerPromoCodeLimitRequest(0, 30); // Лимит равен 0, что невалидно
 
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, invalidLimitRequest);
@@ -273,16 +294,15 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
                                        .Create();
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
-
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
                      .Callback<Partner>(p => activePartner = p)
                      .Returns(Task.CompletedTask);
 
             var validLimitRequest = CreateSetPartnerPromoCodeLimitRequest(1, 30); // Лимит положителен
-
-            var controller = new PartnersController(mockPartnerRepository.Object);
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             // Act
             var result = await controller.SetPartnerPromoCodeLimitAsync(partnerId, validLimitRequest);
@@ -315,22 +335,22 @@ namespace Otus.Teaching.PromoCodeFactory.UnitTests.WebHost.Controllers.Partners
 
             activePartner.PartnerLimits = new List<PartnerPromoCodeLimit> { existingLimit };
 
-            var mockPartnerRepository = new Mock<IRepository<Partner>>();
-            mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
-            mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
+            _mockPartnerRepository.Reset();
+            _mockPartnerRepository.Setup(repo => repo.GetByIdAsync(partnerId)).ReturnsAsync(activePartner);
+            _mockPartnerRepository.Setup(repo => repo.UpdateAsync(It.IsAny<Partner>()))
                      .Callback<Partner>(p => activePartner = p)
                      .Returns(Task.CompletedTask);
 
+            var partnerService = _serviceProvider.GetRequiredService<IPartnerService>();
+            var controller = new PartnersController(_mockPartnerRepository.Object, partnerService);
 
             var newLimitRequest = CreateSetPartnerPromoCodeLimitRequest(1, 30); // Новый лимит с количеством и датой окончания
-
-            var controller = new PartnersController(mockPartnerRepository.Object);
 
             // Act
             await controller.SetPartnerPromoCodeLimitAsync(partnerId, newLimitRequest);
 
             // Assert
-            mockPartnerRepository.Verify(repo => repo.UpdateAsync(activePartner), Times.Once); // Проверяем, что метод UpdateAsync был вызван один раз
+            _mockPartnerRepository.Verify(repo => repo.UpdateAsync(activePartner), Times.Once); // Проверяем, что метод UpdateAsync был вызван один раз
         }
 
         private SetPartnerPromoCodeLimitRequest CreateSetPartnerPromoCodeLimitRequest(int limit, int daysToAdd)
